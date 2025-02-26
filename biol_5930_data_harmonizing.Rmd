@@ -1,0 +1,130 @@
+```{r}
+# Loading Required Libraries
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(reshape2)
+library(ggcorrplot)
+library(FactoMineR)
+library(factoextra)
+
+```
+
+```{r}
+file_path <- "C:\\Users\\deepa\\Downloads\\archive\\METABRIC_RNA_Mutation.csv"
+data <- read.csv(file_path)
+```
+
+```{r}
+# Checking the first few rows
+head(data)
+
+```
+
+```{r}
+# Data Cleaning & Preprocessing
+# Converting categorical variables to factors
+categorical_cols <- c("type_of_breast_surgery", "cancer_type", "cancer_type_detailed", 
+                      "cellularity", "chemotherapy", "hormone_therapy", "radio_therapy", 
+                      "er_status", "pr_status", "her2_status")
+data[categorical_cols] <- lapply(data[categorical_cols], as.factor)
+```
+
+```{r}
+# Handling missing values
+# Removing columns with more than 50% missing values
+threshold <- 0.5 * nrow(data)
+data <- data[, colSums(is.na(data)) < threshold]
+```
+
+```{r}
+# Imputing missing values for numerical columns with median
+num_cols <- sapply(data, is.numeric)
+data[, num_cols] <- lapply(data[, num_cols], function(x) ifelse(is.na(x), median(x, na.rm = TRUE), x))
+```
+
+
+```{r}
+# Selecting only numeric gene expression columns
+gene_cols <- grep("brca1|tp53|atm|cdh1|mapk|smad|vegf", names(data), value = TRUE)
+numeric_gene_cols <- gene_cols[sapply(data[, gene_cols], is.numeric)] # Ensure columns are numeric
+
+# Normalizing only numeric columns
+data[, numeric_gene_cols] <- scale(data[, numeric_gene_cols])
+
+```
+
+```{r}
+# Exploratory Data Analysis (EDA)
+summary(data)
+```
+
+```{r}
+# Plot histograms of gene expression levels
+data_long <- melt(data[, gene_cols])
+ggplot(data_long, aes(value)) +
+  geom_histogram(binwidth = 0.5, fill = "blue", alpha = 0.7) +
+  facet_wrap(~variable, scales = "free") +
+  theme_minimal()
+```
+```{r}
+# Boxplot of gene expression levels
+ggplot(data_long, aes(x = variable, y = value)) +
+  geom_boxplot() +
+  theme_minimal() +
+  coord_flip()
+```
+
+```{r}
+# For extremely large correlation matrices
+p <- ggcorrplot(corr_matrix, 
+               lab = TRUE, 
+               lab_size = 2.5,  
+               tl.cex = 7,      
+               method = "circle",
+               type = "lower",  
+               title = "Gene Correlation Matrix",
+               ggtheme = ggplot2::theme_minimal())
+
+p <- p + theme(
+  axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+  axis.text.y = element_text(size = 8),
+  legend.position = "right"
+)
+
+ggcorrplot(corr_matrix, lab = TRUE, lab_size = 1, method = "circle")
+
+ggsave("gene_correlation_heatmap_large.png", p, width = 16, height = 14, dpi = 300, limitsize = FALSE)
+
+```
+
+```{r}
+# Feature Engineering & Selection
+# Ensuring only numeric columns are used
+gene_cols <- grep("brca1|tp53|atm|cdh1|mapk|smad|vegf", names(data), value = TRUE)
+numeric_gene_cols <- gene_cols[sapply(data[, gene_cols], is.numeric)]  # Keep only numeric columns
+
+# Computing variance, ignoring NAs
+gene_variance <- apply(data[, numeric_gene_cols], 2, var, na.rm = TRUE)
+
+# Identifiying highly variable genes 
+high_variance_genes <- names(gene_variance[gene_variance > quantile(gene_variance, 0.75, na.rm = TRUE)])
+
+
+
+```
+
+
+```{r}
+# Dimensionality Reduction with PCA
+pca_res <- PCA(data[, high_variance_genes], scale.unit = TRUE, graph = FALSE)
+fviz_eig(pca_res) 
+fviz_pca_ind(pca_res, geom = "point", col.ind = "cos2")
+
+```
+
+```{r}
+# Saving the cleaned data
+write.csv(data, "METABRIC_Cleaned.csv", row.names = FALSE)
+```
+
